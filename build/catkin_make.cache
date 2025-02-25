@@ -1,2 +1,0 @@
-TOOL/calcul_pcd_overlap:TOOL/files_to_ros:TOOL/rs_to_velodyne:btc_descriptor
--DCMAKE_BUILD_TYPE=RelWithDebInfo -DCATKIN_DEVEL_PREFIX=/home/jixuanlee/PRaR/devel -DCMAKE_INSTALL_PREFIX=/home/jixuanlee/PRaR/install -G Unix Makefiles
