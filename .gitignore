@@ -1,0 +1,10 @@
+.vscode
+.catkin_workspace
+
+/build/
+/devel/
+/ljx's personal backup/
+/datasets/
+/pkgs/
+/bags/
+*.bag
