@@ -1,0 +1,7 @@
+<launch>  
+
+    <node pkg="calcul_pcd_overlap" type="calcul_pcd_overlap" name="calcul_pcd_overlap" output="screen">
+
+    </node>
+
+</launch>

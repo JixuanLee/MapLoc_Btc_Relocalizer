@@ -1,0 +1,30 @@
+<launch>
+<!-- Launch file for Place recognition bxn -->
+
+  <arg name="show_rviz" default="true" />
+
+  <node 
+		pkg="btc_desc" 
+		type="place_recognition_and_relocation" 
+		name="place_recognition_and_relocation" 
+		output="screen" 
+	/>
+
+  <param name="cloud_overlap_thr" type="double" value = "0.4"/> <!-- 粗匹配后进行点云重叠判断的阈值  -->
+  <param name="read_bin" type="bool" value="false" />
+  <param name="setting_path" type="string" value = "$(find btc_desc)/config/config_outdoor.yaml"/>
+  
+  <!-- <param name="pcds_dir" type="string" value = "/home/jixuanlee/datasetBXN/2025-01-01-09-30-30/deskew_cloud"/>
+  <param name="pose_file" type="string" value = "/home/jixuanlee/datasetBXN/2025-01-01-09-30-30/523.197354opti_poses_tmp.txt"/> -->
+
+  <!-- <param name="pcds_dir" type="string" value = "/home/jixuanlee/datasetBXN/2025-01-01-13-09-58/deskew_cloud"/>
+  <param name="pose_file" type="string" value = "/home/jixuanlee/datasetBXN/2025-01-01-13-09-58/18.245620opti_poses_tmp.txt"/> -->
+
+  <param name="pcds_dir" type="string" value = "/home/jixuanlee/datasetBXN/0220/deskew_cloud"/>
+  <param name="pose_file" type="string" value = "/home/jixuanlee/datasetBXN/0220/225.149380opti_poses_tmp.txt"/>
+
+  <group if="$(arg show_rviz)">
+    <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz_for_PRR" args="-d $(find btc_desc)/rviz_cfg/loop.rviz" />
+  </group>
+
+</launch>

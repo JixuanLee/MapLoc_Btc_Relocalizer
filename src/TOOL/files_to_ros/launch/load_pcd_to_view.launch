@@ -1,0 +1,18 @@
+<launch>
+
+    <arg name="base_path" default="/home/jixuanlee/datasetBXN/2025-01-01-09-30-30/"/>  <!-- with "/" an the begin & end -->
+    <arg name="pcd_name" default="GlobalMap.pcd"/>  
+
+    <arg name="topicPcdOnce" default="/BXN/pcd_to_view"/>       
+
+    <node pkg="files_to_ros" type="files_to_ros_load_pcd_to_view" name="load_pcd_to_view" output="screen">
+        <param name="base_path" value="$(arg base_path)"/>
+        <param name="pcd_name" value="$(arg pcd_name)"/>
+
+        <param name="topicPcdOnce" value="$(arg topicPcdOnce)"/>
+
+    </node>
+
+    <node pkg="rviz" type="rviz" name="load_pcd_to_view_rviz" args="-d $(find files_to_ros)/config/load_pcd_to_view.rviz" />
+
+</launch>

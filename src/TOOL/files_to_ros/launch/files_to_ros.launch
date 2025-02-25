@@ -1,0 +1,37 @@
+<launch>
+
+    <arg name="base_path" default="/home/jixuanlee/datasetBXN/2025-01-01-09-30-30/"/>  <!-- with "/" an the begin & end -->
+    <arg name="file_pcds" default="deskew_cloud/"/>  <!-- with "/" an the end -->
+    <arg name="path_poses" default="525.077791opti_poses_tmp.txt"/>       
+    <arg name="path_save_global_pcd" default="GlobalMap.pcd"/>    
+
+    <arg name="leafSize" default="4.0"/>       
+    <arg name="skipHz" default="5"/>    
+    <arg name="doPubWithFrequency" default="false"/>    
+    <arg name="pubFrequency" default="10.0"/>    
+
+    <arg name="topicOriPcd" default="/BXN/ori_pc"/>       
+    <arg name="topicGlobalPcd" default="/BXN/map_pc"/>       
+    <arg name="topicGlobalPath" default="/BXN/path"/>       
+    <arg name="topicScanOdom" default="/BXN/odometry"/>       
+
+    <node pkg="files_to_ros" type="files_to_ros_files_to_ros" name="files_to_ros" output="screen">
+        <param name="base_path" value="$(arg base_path)"/>
+        <param name="file_pcds" value="$(arg file_pcds)"/>
+        <param name="path_poses" value="$(arg path_poses)"/>
+        <param name="path_save_global_pcd" value="$(arg path_save_global_pcd)"/>
+        
+        <param name="leafSize" value="$(arg leafSize)"/>
+        <param name="skipHz" value="$(arg skipHz)"/>
+        <param name="doPubWithFrequency" value="$(arg doPubWithFrequency)"/>
+        <param name="pubFrequency" value="$(arg pubFrequency)"/>
+
+        <param name="topicOriPcd" value="$(arg topicOriPcd)"/>
+        <param name="topicGlobalPcd" value="$(arg topicGlobalPcd)"/>
+        <param name="topicGlobalPath" value="$(arg topicGlobalPath)"/>
+        <param name="topicScanOdom" value="$(arg topicScanOdom)"/>
+    </node>
+
+    <!-- <node pkg="rviz" type="rviz" name="files_to_ros_rviz" args="-d $(find files_to_ros)/config/files_to_ros.rviz" /> -->
+
+</launch>

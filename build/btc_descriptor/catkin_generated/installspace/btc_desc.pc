@@ -1,0 +1,8 @@
+prefix=/home/jixuanlee/PRaR/install
+
+Name: btc_desc
+Description: Description of btc_desc
+Version: 1.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: roscpp rospy std_msgs

@@ -1,0 +1,8 @@
+prefix=/home/jixuanlee/PRaR/install
+
+Name: calcul_pcd_overlap
+Description: Description of calcul_pcd_overlap
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: roscpp rospy std_msgs
