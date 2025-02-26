@@ -1,8 +1,8 @@
 .vscode
 .catkin_workspace
 
-build/
-devel/
+/build/
+/devel/
 /ljx's personal backup/
 /datasets/
 /pkgs/

@@ -2,11 +2,12 @@
  * @Author: Jixuan Lee
  * @Date: 2025-02-21 18:09:22
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-02-24 12:19:00
+ * @LastEditTime: 2025-02-26 13:51:41
  * @FilePath: /OnlineLTSlam/src/TOOL/calcul_pcd_overlap/include/calcul_pcd_overlap/calculPcdOverlap.h
  * @Description: 
  * @Logs: 
  */
+#pragma once
 
 #include <ros/ros.h>
 #include <iostream>
@@ -24,22 +25,22 @@ using PointType = pcl::PointXYZI;
 using PointCloudType = pcl::PointCloud<PointType>;
 using CloudPtr = PointCloudType::Ptr;
 
-class VOXEL_LOC{
-    public:
-      int64_t x,y,z;
-  
-    VOXEL_LOC(int64_t vx=0, int64_t vy =0, int64_t vz = 0  )
-      :x(vx), y(vy), z(vz){};
-    bool operator==(const VOXEL_LOC &other) const{
-      return (x == other.x && y == other.y && z == other.z);
-    }
+class VOXEL_LOC_CPO{
+  public:
+    int64_t x,y,z;
+
+  VOXEL_LOC_CPO(int64_t vx=0, int64_t vy =0, int64_t vz = 0  )
+    :x(vx), y(vy), z(vz){};
+  bool operator==(const VOXEL_LOC_CPO &other) const{
+    return (x == other.x && y == other.y && z == other.z);
+  }
 };
 
-// 向标准库std提供自定义数据类型转为哈希值的方法struct hash<VOXEL_LOC>
+// 向标准库std提供自定义数据类型转为哈希值的方法struct hash<VOXEL_LOC_CPO>
 namespace std {
   template <>
-  struct hash<VOXEL_LOC> {
-    int64_t operator()(const VOXEL_LOC &s) const {
+  struct hash<VOXEL_LOC_CPO> {
+    int64_t operator()(const VOXEL_LOC_CPO &s) const {
       using std::hash;
       using std::size_t;
       return ((((s.z) * HASH_P) % MAX_N + (s.y)) * HASH_P) % MAX_N + (s.x);
@@ -47,13 +48,13 @@ namespace std {
   };
 }
   
-class VOXEL_INFO{
+class VOXEL_INFO_CPO{
     public:
       double mean_x, mean_y, mean_z;
       int num;
       double length;
   
-    VOXEL_INFO( int count =0 , double length = 0.5)
+    VOXEL_INFO_CPO( int count =0 , double length = 0.5)
       :num(count), length(length){};
 };
 
@@ -61,7 +62,7 @@ class calculPcdOverlap
 {
 
 private:
-  std::unordered_map<VOXEL_LOC, std::shared_ptr<VOXEL_INFO> > voxel_map;
+  std::unordered_map<VOXEL_LOC_CPO, std::shared_ptr<VOXEL_INFO_CPO> > voxel_map;
   double voxel_length;
   Eigen::Vector3d origin;
   pcl::PCDReader reader;

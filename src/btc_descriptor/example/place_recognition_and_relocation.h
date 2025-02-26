@@ -2,7 +2,7 @@
  * @Author: Jixuan Lee
  * @Date: 2025-01-17 17:15:17
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-02-24 15:55:51
+ * @LastEditTime: 2025-02-26 12:30:44
  * @FilePath: /OnlineLTSlam/src/btc_descriptor/example/place_recognition_and_relocation.h
  * @Description: 
  * @Logs: 
@@ -28,6 +28,7 @@
 #include "include/btc.h"
 #include "include/utils.h"
 #include "include/ndtLocalizer.h"
+#include <calcul_pcd_overlap/calculPcdOverlap.h>
 
 /**
  * @brief ljx 自定义时间打印类 
@@ -108,6 +109,11 @@ std_msgs::ColorRGBA color_path;
 double scale_tp;
 double scale_fp;
 double scale_path;
+
+const static std::string RED_COLOR = "\033[31m";
+const static std::string GREEN_COLOR = "\033[32m";
+const static std::string RESET_COLOR = "\033[0m";
+
 std::vector<pcl::PointCloud<PointType>::Ptr> ori_clouds; // 所有的原始点云（lidar系）
 
 std::chrono::_V2::system_clock::time_point beginTimeOfTheFrameWhoseBtcLoopIsNiceAndDoOpti;

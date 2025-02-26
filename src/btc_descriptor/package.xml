@@ -73,7 +73,9 @@
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>tf_conversions</exec_depend>
 
-
+  <!-- 自定义工具类的库的依赖 -->
+  <depend>calcul_pcd_overlap</depend>  
+  
   <!-- The export tag contains other, unspecified, tags -->
   <export>
     <!-- Other tools can request additional information be placed here -->

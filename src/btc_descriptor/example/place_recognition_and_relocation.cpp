@@ -2,7 +2,7 @@
  * @Author: Jixuan Lee
  * @Date: 2025-01-17 17:13:44
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-02-25 12:19:30
+ * @LastEditTime: 2025-02-26 12:30:32
  * @FilePath: /OnlineLTSlam/src/btc_descriptor/example/place_recognition_and_relocation.cpp
  * @Description:
  * @Logs:
@@ -17,13 +17,15 @@
  *      9.2025-02-20：新增NDT匹配模块，完成所有API。
  *      10.2025-2-21：修复了NDT模块的一些已知问题，增加可视化与测试打印。
  *      11.2025-2-25：完善了BTC-NDT效果对比的输出格式，即采用统一curr单帧(基于ori与opti-*生成的全局点云)与其loop(未必同帧，采用相同的submap构建方式)进行对比；也进行了耗时对比。
+ *      12.2025-2-26：内嵌重合度算法模块，对BTC/NDT重定位优化效果进行统计学定量分析。
  */
 
 #include "example/place_recognition_and_relocation.h"
 
 std::unique_ptr<BtcDescManager> btc_manager;
 
-const int keyFrameIdTestPrint = 2113; // 010109：2566  010113：3372 
+const static int mode = 0; // O:BTC; 1:NDT
+const static int keyFrameIdTestPrint = 2113; // 010109：2566  010113：3372 
 
 void signalHandler(int signal)
 {
@@ -375,8 +377,6 @@ void reLocation()
     Eigen::Vector3d loop_rot = turnRadianVec3dToDegreeVec3d(loop_transform.second.eulerAngles(0, 1, 2));
     // loop_transform = opti_transform;
 
-    const std::string GREEN_COLOR = "\033[32m";
-    const std::string RESET_COLOR = "\033[0m";
     std::cout <<GREEN_COLOR<< "[BTC][PIcp] t of cupipei: " << loop_transform.first.transpose() <<RESET_COLOR<< std::endl;
     std::cout << "[BTC][PIcp] rot of cupipei: " << loop_rot.transpose() << std::endl;
 
@@ -412,7 +412,7 @@ void reLocation()
     // static int number2save = 1;
     // static int nowNumber = 0;
     // if (number2save == nowNumber++)
-    if(this_nice_place_recognition->match_id_.first == keyFrameIdTestPrint)
+    // if(this_nice_place_recognition->match_id_.first == keyFrameIdTestPrint)
     {
         pcl::PointCloud<PointType>::Ptr curr_points_odom(new pcl::PointCloud<PointType>);
         pcl::PointCloud<PointType>::Ptr loop_points_odom(new pcl::PointCloud<PointType>);
@@ -434,13 +434,26 @@ void reLocation()
         opti_transform_mat.block<3,1>(0,3) = opti_transform.first;
         pcl::transformPointCloud(*curr_points_odom, *curr_points_opti_by_p2picp, opti_transform_mat.cast<float>());
 
-        pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_points_odom.pcd", *curr_points_odom);
-        pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_points_opti.pcd", *curr_points_opti_by_p2picp);
-        pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop_points_odom.pcd", *loop_points_odom);
-        pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr-planes.pcd", *curr_planes_points);
-        pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop-planesloop_planes_points.pcd", *loop_planes_points);
+        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_points_odom.pcd", *curr_points_odom);
+        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_points_opti.pcd", *curr_points_opti_by_p2picp);
+        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop_points_odom.pcd", *loop_points_odom);
+        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr-planes.pcd", *curr_planes_points);
+        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop-planesloop_planes_points.pcd", *loop_planes_points);
+        // savePosesToTxt("/home/jixuanlee/pcdsOF523/btc-poses-for-compare.txt", ori_loop_pose, ori_curr_pose, aft_curr_pose);
 
-        savePosesToTxt("/home/jixuanlee/pcdsOF523/btc-poses-for-compare.txt", ori_loop_pose, ori_curr_pose, aft_curr_pose);
+        // 计算重合度
+        calculPcdOverlap cpo(0.5);
+        double cpoRateOri = -1;
+        double cpoRateOpti = -1;
+        Eigen::Matrix4d ori_loop_pose_mat;
+        turnPairPose2EigenMatrix4d(ori_loop_pose,ori_loop_pose_mat);
+        cpo.make_voxel_map(loop_points_odom, ori_loop_pose_mat, 200);
+        // 输入的点云：来自curr的单帧(odom系，其是由lidar2odom-ori变换到的)，输入的位姿：单位阵(暂时没用)
+        cpoRateOri = cpo.calculate_overlap_rate(curr_points_odom, Eigen::Matrix4d::Identity());
+        // 输入的点云：来自curr的单帧(odom系，其是由lidar2odom-opti变换到的)，输入的位姿：单位阵(暂时没用)
+        cpoRateOpti = cpo.calculate_overlap_rate(curr_points_opti_by_p2picp, Eigen::Matrix4d::Identity());
+        std::cout<<GREEN_COLOR<<"[CPO-BTC] The rate of pcds(ori-ori):"<<cpoRateOri<<" ,and the pcds(ori-opti):"<<cpoRateOpti<<RESET_COLOR<<std::endl;
+    
     }
         
 
@@ -503,8 +516,7 @@ void placeRecognition()
         transPclPointCloud(curr_cloud, pose_list[submap_id].first, pose_list[submap_id].second); //转移到odom系
 
         // 【优化】用sub-map代替本帧
-        static size_t numToMerge = 3
-        ;
+        static size_t numToMerge = 3;
         if (submap_trans_cloud.size() >= numToMerge)
             submap_trans_cloud.pop_front();
         submap_trans_cloud.push_back(curr_cloud);
@@ -1007,21 +1019,22 @@ void ndtLoopDetect(OnlineLTSlam::ndtLocalizer& ndt_, const float* radiusSearchPa
         }
 
         // 发布2 位姿-绿色
-        marker.scale.x = scale_tp;
-        marker.color = color_tp;
-        geometry_msgs::Point point1;
-        point1.x = pose_list[i - 1].first[0];
-        point1.y = pose_list[i - 1].first[1];
-        point1.z = pose_list[i - 1].first[2];
-        geometry_msgs::Point point2;
-        point2.x = pose_list[i].first[0];
-        point2.y = pose_list[i].first[1];
-        point2.z = pose_list[i].first[2];
-        marker.points.push_back(point1);
-        marker.points.push_back(point2);
-        marker_array.markers.push_back(marker);
-        pubLoopStatus.publish(marker_array);
-        
+        {
+            marker.scale.x = scale_tp;
+            marker.color = color_tp;
+            geometry_msgs::Point point1;
+            point1.x = pose_list[i - 1].first[0];
+            point1.y = pose_list[i - 1].first[1];
+            point1.z = pose_list[i - 1].first[2];
+            geometry_msgs::Point point2;
+            point2.x = pose_list[i].first[0];
+            point2.y = pose_list[i].first[1];
+            point2.z = pose_list[i].first[2];
+            marker.points.push_back(point1);
+            marker.points.push_back(point2);
+            marker_array.markers.push_back(marker);
+            pubLoopStatus.publish(marker_array);
+        }
 
         std::pair<Eigen::Vector3d, Eigen::Matrix3d> currPoseAft;
         currPoseAft.first[0] = result_ndt.pose.position.x;
@@ -1043,23 +1056,36 @@ void ndtLoopDetect(OnlineLTSlam::ndtLocalizer& ndt_, const float* radiusSearchPa
         // static int number2save = 0;
         // static int nowNumber = 0;
         // if (number2save == nowNumber++)
-        if(i == keyFrameIdTestPrint)
+        // if(i == keyFrameIdTestPrint)
         {
-            pcl::PointCloud<PointType>::Ptr curr_points_opti_by_p2picp(new pcl::PointCloud<PointType>);
-            transPclPointCloud(rsCurrSubmap_curr_lidar, currPoseAft.first, currPoseAft.second, curr_points_opti_by_p2picp);
+            pcl::PointCloud<PointType>::Ptr rsCurrSubmapOptiByNdt(new pcl::PointCloud<PointType>);
+            transPclPointCloud(rsCurrSubmap_curr_lidar, currPoseAft.first, currPoseAft.second, rsCurrSubmapOptiByNdt);
     
-            pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523-ndt/ndt-curr_points_odom.pcd", *rsCurrSubmap);
-            pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523-ndt/ndt-curr_points_opti.pcd", *curr_points_opti_by_p2picp);
-            pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523-ndt/ndt-loop_points_odom.pcd", *rsLoopSubmap); // 这里直接使用了loop的submap
-            savePosesToTxt("/home/jixuanlee/pcdsOF523-ndt/ndt-poses-for-compare.txt", loopPoseOri, currPoseOri, currPoseAft);
+            // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523-ndt/ndt-curr_points_odom.pcd", *rsCurrSubmap);
+            // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523-ndt/ndt-curr_points_opti.pcd", *rsCurrSubmapOptiByNdt);
+            // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523-ndt/ndt-loop_points_odom.pcd", *rsLoopSubmap); // 这里直接使用了loop的submap
+            // savePosesToTxt("/home/jixuanlee/pcdsOF523-ndt/ndt-poses-for-compare.txt", loopPoseOri, currPoseOri, currPoseAft);
+
+            // 计算重合度
+            calculPcdOverlap cpo(0.5);
+            double cpoRateOri = -1;
+            double cpoRateOpti = -1;
+            Eigen::Matrix4d loopPoseOriMat;
+            turnPairPose2EigenMatrix4d(loopPoseOri,loopPoseOriMat);
+            cpo.make_voxel_map(rsLoopSubmap, loopPoseOriMat, 200);
+            // 输入的点云：来自curr的单帧(odom系，其是由lidar2odom-ori变换到的)，输入的位姿：单位阵(暂时没用)
+            cpoRateOri = cpo.calculate_overlap_rate(rsCurrSubmap, Eigen::Matrix4d::Identity());
+            // 输入的点云：来自curr的单帧(odom系，其是由lidar2odom-opti变换到的)，输入的位姿：单位阵(暂时没用)
+            cpoRateOpti = cpo.calculate_overlap_rate(rsCurrSubmapOptiByNdt, Eigen::Matrix4d::Identity());
+            std::cout<<GREEN_COLOR<<"[CPO-NDT] The rate of pcds(ori-ori):"<<cpoRateOri<<" ,and the pcds(ori-opti):"<<cpoRateOpti<<RESET_COLOR<<std::endl;
+        
         }
 
         // 打印
         // Trans：根据输入pose，2帧间定位的变换量（含误差）
         // Position：优化前后，本帧定位数据
         // Change：优化前后，本帧定位数据被优化了多少
-        const static std::string GREEN_COLOR = "\033[32m";
-        const static std::string RESET_COLOR = "\033[0m";
+
         std::cout <<GREEN_COLOR<< "[NDT] Loop State: RS-true, NDT-true: " << i<<"&"<<rsLoopID <<RESET_COLOR<< std::endl;
         std::cout << "[NDT] Trans btw curr&loop bef: Translation: " << poseDiffBefNdtBtwLoopCurr.pose_diff.first.transpose() << std::endl;
         std::cout << "[NDT] Trans btw curr&loop bef: Rotation: " << poseDiffBefNdtBtwLoopCurr.rot_diff_rpy_deg.transpose() <<" in RPY deg."<< std::endl;
@@ -1105,7 +1131,6 @@ int main(int argc, char **argv)
 
     loadPoses();
 
-    static int mode = 0; // O:BTC; 1:NDT
     if(mode == 0)
         placeRecognition();
     else if (mode == 1)

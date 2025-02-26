@@ -22,6 +22,8 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   tf_conversions
   nav_msgs
+
+  calcul_pcd_overlap # 已在相关包中编译为lib
 )
 
 ## System dependencies are found with CMake's conventions
@@ -31,6 +33,10 @@ find_package(OpenCV REQUIRED)
 find_package(Threads)
 find_package(Ceres REQUIRED)
 find_package(GTSAM REQUIRED QUIET)
+
+# find_package(catkin REQUIRED COMPONENTS # 已在相关包中编译为lib
+#   calcul_pcd_overlap
+# )
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
@@ -42,7 +48,7 @@ catkin_package(
 )
 
 include_directories(
-# include
+  # include
   example
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
@@ -61,12 +67,17 @@ add_library(utils_lib src/utils.cpp)
 #         tbb
 #         utils_lib)
 
-add_executable(place_recognition_and_relocation example/place_recognition_and_relocation.cpp src/btc.cpp src/ndtLocalizer.cpp)
+add_executable(place_recognition_and_relocation 
+  example/place_recognition_and_relocation.cpp 
+  src/btc.cpp 
+  src/ndtLocalizer.cpp)
 target_link_libraries(place_recognition_and_relocation 
-        ${catkin_LIBRARIES} 
-        ${PCL_LIBRARIES} 
-        ${OpenCV_LIBS} 
-        ${CERES_LIBRARIES} 
-        tbb
-        utils_lib)
+  ${catkin_LIBRARIES} 
+  ${PCL_LIBRARIES} 
+  ${OpenCV_LIBS} 
+  ${CERES_LIBRARIES} 
+  tbb
+  utils_lib
+  calcul_pcd_overlap_lib  # 已在相关包中编译为lib
+)
       
