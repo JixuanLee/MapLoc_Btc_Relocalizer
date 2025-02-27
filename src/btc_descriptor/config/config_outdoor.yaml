@@ -10,9 +10,9 @@ voxel_init_num: 10  # Minimum number of points in a voxel for extraction 当前�
 proj_plane_num: 1  # Number of projection planes
 proj_image_resolution: 0.5  # Resolution of the projected image in meters
 proj_image_high_inc: 0.1    # Height increment for the projected image in meters
-proj_dis_min: -1.0  # Minimum distance to the projection plane
+proj_dis_min: -1.0  # Minimum distance to the projection plane 在提取二进制描述符时，(一般只研究最大平面)提取本帧点到最大平面距离处于二者之间的点作为候选二进制点
 proj_dis_max: 4.0  # Maximum distance to the projection plane
-summary_min_thre: 8  # Minimum number of points in one image grid 存储网格[][]内的高程区间中有多少个区间被占据,大于此才算二进制描述符 default:10,这个数字越小，二进制与三角形描述符都越多
+summary_min_thre: 10  # Minimum number of points in one image grid 存储网格[][]内的高程区间中有多少个区间被占据,大于此才算二进制描述符 default:10,这个数字越小，二进制与三角形描述符都越多
 line_filter_enable: 0  # Enable line point filtering (1: enabled, 0: disabled) default：1
 
 # std descriptor
@@ -23,10 +23,10 @@ max_constrait_dis: 2     # Neighborhood range for non-maximum suppression
 triangle_resolution: 0.2  # Edge length amplification coefficient
 
 # candidate search
-skip_near_num: 20  # Number of frames to skip default:100
+skip_near_num: 50  # Number of frames to skip default:100
 candidate_num: 50   # Maximum number of reference frames
 similarity_threshold: 0.7  # BTC similarity coefficient（针对平均二进制描述符）
 rough_dis_threshold: 0.01   # Threshold coefficient for BTC edge length distance
 normal_threshold: 0.2  # Threshold for plane ICP and geometric validation: point-to-plane distance default:0.2
 dis_threshold: 0.5  # Distance threshold for plane-to-plane validation. default:0.5
-icp_threshold: 0.5  # Threshold for plane-to-plane ICP to triggle loop.依据BTC找到回环帧与否的阈值  default:0.2
+icp_threshold: 0.4  # Threshold for plane-to-plane ICP to triggle loop.依据BTC找到粗匹回环帧与否的阈值  default:0.2，越大粗匹配越少

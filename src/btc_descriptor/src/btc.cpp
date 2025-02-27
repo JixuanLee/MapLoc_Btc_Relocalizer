@@ -1436,7 +1436,7 @@ void BtcDescManager::binary_extractor(
   std::vector<BinaryDescriptor> temp_binary_list;
   Eigen::Vector3d last_normal(0, 0, 0);
   int useful_proj_num = 0;
-  for (int i = 0; i < proj_plane_list.size(); i++) { // 遍历每一个二次合并后的平面
+  for (int i = 0; i < proj_plane_list.size(); i++) { // 遍历每一个二次合并后的平面（一般只研究最大的第一个平面）
     std::vector<BinaryDescriptor> prepare_binary_list;
     Eigen::Vector3d proj_center = proj_plane_list[i]->center_; // 当前平面的中心
     Eigen::Vector3d proj_normal = proj_plane_list[i]->normal_; // 当前平面的法向量
@@ -1459,7 +1459,7 @@ void BtcDescManager::binary_extractor(
       for (auto bi : prepare_binary_list) {
         temp_binary_list.push_back(bi);
       }
-      if (useful_proj_num == config_setting_.proj_plane_num_) { //只提取足够数量的平面
+      if (useful_proj_num == config_setting_.proj_plane_num_) { //只提取足够数量的平面（一般1个）
         break;
       }
     }

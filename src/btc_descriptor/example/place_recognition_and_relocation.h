@@ -126,10 +126,6 @@ std::vector<double> time_list;
 
 extern std::unique_ptr<BtcDescManager> btc_manager;
 
-std::vector<double> descriptor_time;
-std::vector<double> querying_time;
-std::vector<double> update_time;
-
 pcl::PCDReader reader;
 
 pcl::RadiusOutlierRemoval<PointType> inilerFilter;

@@ -412,8 +412,8 @@ class BtcDescManager {
   // save all binary descriptors of key frame
   std::vector<std::vector<BinaryDescriptor>> history_binary_list_;
 
-  // odom下的，拼接、预处理的点云
-  std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> key_ori_cloud_vec_;
+  // odom下的，拼接、预处理的点云 不建议使用，很消耗内存，容易内存爆炸
+  // std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> key_ori_cloud_vec_;
 
   // odom下的 为了检测点云重合
   std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> key_cloud_vec_;

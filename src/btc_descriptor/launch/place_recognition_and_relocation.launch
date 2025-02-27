@@ -10,7 +10,7 @@
 		output="screen" 
 	/>
 
-  <param name="cloud_overlap_thr" type="double" value = "0.4"/> <!-- 粗匹配后进行点云重叠判断的阈值  -->
+  <param name="cloud_overlap_thr" type="double" value = "0.4"/> <!-- 粗匹配后进行点云重叠判断的阈值（越大，送去精匹配的粗匹配候选帧越少，可视化红色越多绿色越少，当然这个变量不影响绿+红的总量）  -->
   <param name="read_bin" type="bool" value="false" />
   <param name="setting_path" type="string" value = "$(find btc_desc)/config/config_outdoor.yaml"/>
   
