@@ -469,8 +469,7 @@ class BtcDescManager {
       const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
       const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
       std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform,
-      std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform_opti, 
-      const bool doOptiCheck);
+      std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform_opti);
 
 
  private:

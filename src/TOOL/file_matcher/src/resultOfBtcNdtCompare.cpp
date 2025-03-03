@@ -2,9 +2,9 @@
  * @Author: Jixuan Lee
  * @Date: 2025-02-27 12:08:48
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-02-27 16:58:52
+ * @LastEditTime: 2025-03-03 11:21:42
  * @FilePath: /OnlineLTSlam/src/TOOL/file_matcher/src/resultOfBtcNdtCompare.cpp
- * @Description: 
+ * @Description: 输入2个txt，分别为BTC与NDT的回环重定位的精度提升；本节点析出二者交集（同currID）并对其比较。
  * @Logs: 
  */
 
@@ -50,8 +50,8 @@ std::pair<std::vector<int>,std::vector<double>> splitToFloatsAndInts(const std::
 int main() 
 {
     std::string cpoFileBtcPath = "/home/jixuanlee/cpoFileBTC-3V3.txt";
-    std::string cpoFileNdtPath = "/home/jixuanlee/cpoFileNDT-5V9.txt";
-    std::string resultPath = "/home/jixuanlee/resultBtcNdtMatch.txt";
+    std::string cpoFileNdtPath = "/home/jixuanlee/cpoFileNDT-5V9-skip2.txt";
+    std::string resultPath = "/home/jixuanlee/resultBtcNdtMatch-010111.txt";
     fileMatcher matcher(cpoFileBtcPath, cpoFileNdtPath);
     auto pairs = matcher.processBtcNdtFiles();
 
@@ -68,12 +68,6 @@ int main()
         double btcInfoCpoImprovePrecent = (btcInfo.second[1] - btcInfo.second[0]) / btcInfo.second[0] * 100;
         double ndtInfoCpoImprovePrecent = (ndtInfo.second[1] - ndtInfo.second[0]) / ndtInfo.second[0] * 100;
 
-        // 进行O有效性加权：若原本重叠率已经很高，则提升的百分比可能很小，需要稍微放大
-        // 例如：A：0.9->0.91, improve=1.1%， B：0.5->0.8, improve=60%
-        // 显然A效果其实更好，因此A*=0.9, A=0.99%, B*=0.5, B=30%（已夸张示意）
-        // btcInfoCpoImprovePrecent *= btcInfo.second[1]; 
-        // ndtInfoCpoImprovePrecent *= ndtInfo.second[1];
-
         btcCpoImprovePrecent.push_back(btcInfoCpoImprovePrecent);
         ndtCpoImprovePrecent.push_back(ndtInfoCpoImprovePrecent);
 
@@ -84,12 +78,12 @@ int main()
             matchedFile.open(resultPath);
             if (!matchedFile.is_open())
                 std::cout << "matchedFile Cant be Open!" << std::endl;
-            std::string lineOut = "btcCpoImprovePrecent ndtCpoImprovePrecent";
+            std::string lineOut = "currIDofBoth btcCpoImprovePrecent ndtCpoImprovePrecent";
             matchedFile << lineOut <<"\n";
-            lineOut = std::to_string(btcInfoCpoImprovePrecent) + " " + std::to_string(ndtInfoCpoImprovePrecent);
+            lineOut = std::to_string(ndtInfo.first[0]) + " " + std::to_string(btcInfoCpoImprovePrecent) + " " + std::to_string(ndtInfoCpoImprovePrecent);
             matchedFile << lineOut <<"\n";
         }
-        std::string lineOut = std::to_string(btcInfoCpoImprovePrecent) + " " + std::to_string(ndtInfoCpoImprovePrecent);
+        std::string lineOut = std::to_string(ndtInfo.first[0]) + " " + std::to_string(btcInfoCpoImprovePrecent) + " " + std::to_string(ndtInfoCpoImprovePrecent);
         matchedFile << lineOut <<"\n";
 
     }

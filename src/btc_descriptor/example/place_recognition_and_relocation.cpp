@@ -2,7 +2,7 @@
  * @Author: Jixuan Lee
  * @Date: 2025-01-17 17:13:44
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-02-27 17:02:02
+ * @LastEditTime: 2025-03-03 11:15:33
  * @FilePath: /OnlineLTSlam/src/btc_descriptor/example/place_recognition_and_relocation.cpp
  * @Description:
  * @Logs:
@@ -11,37 +11,53 @@
  *      3.2025-02-13：增加平面可视化功能，提供灵活的API，便于观测；新增PlaceRecognitionList结构体，作为粗匹配+场景识别的最终结果保存格式；
  *      4.2025-02-14：完成精匹配API接口贯通，现已打通精匹配流程；
  *      5.Tips：生成BTC的是odom下的实时点云，因此BTC、平面特征均是odom坐标系下；BTC粗匹配的结果loop_transform是curr近似的一个定位误差；
- *      6.2025-02-17：精匹配已经得到运行，将精度从4m控制到1m（旋转角控制在0.4°）；
+ *      6.2025-02-17：精匹配已得到运行；
  *      7.2025-02-19：精匹配已得到验证：输出的位姿纯算法优化未必真值，但基于优化结果对同场景点云的拼接却是极度重合准确的。
  *      8.单帧完整BTC耗时：30ms；10帧拼接完整BTC耗时：150ms。拼接与否，点云拼接重合效果都很好。
  *      9.2025-02-20：新增NDT匹配模块，完成所有API。
  *      10.2025-2-21：修复了NDT模块的一些已知问题，增加可视化与测试打印。
  *      11.2025-2-25：完善了BTC-NDT效果对比的输出格式，即采用统一curr单帧(基于ori与opti-*生成的全局点云)与其loop(未必同帧，采用相同的submap构建方式)进行对比；也进行了耗时对比。
  *      12.2025-2-26：内嵌重合度算法模块，对BTC/NDT重定位优化效果进行统计学定量分析；优化BTC内存管理。
- *      13.2025-2-27：增加BTC/NDT-CPO重叠度计算结果导出模块，新开发FileMatcher工具库。
- */
+ *      13.2025-2-27：增加BTC/NDT-CPO重叠度计算结果导出模块，新开发FileMatcher工具库，修复一处位姿坐标变换数学错误，已证实BTC在点云重合与位姿优化方面均有很大优势。
+ *      14.2025-2-28：BTC在180°场景-单雷达倾斜-回环中，cpo提升下降，原因是雷达倾斜导致点云不均，180°场景除非拼接特别特别多否则会导致curr-loop的（点云）平面交集很少，精匹配约束过少，例如十字路口planes=480，180°场景或为300。
+ *      15.研究发现，二进制描述子（三角形描述子的顶点）大部分位于道路两侧建筑物等有高度的物体上，地面上很少。包括宽马路高架遮挡等会导致180°无法回环（倒也正常）
+ *      16.在5个dataset上，BTC较NDT整体速度提升至少约3.70倍，重定位精度提升约14.75%。
+ */ 
 
 #include "example/place_recognition_and_relocation.h"
 
 std::unique_ptr<BtcDescManager> btc_manager;
 
+// NDT与BTC模式切换
 const static int mode = 0; // O:BTC; 1:NDT 
-const static int keyFrameIdTestPrint = -1; // 010109：2566  010113：3372  0220：2113
 
-const static bool cpoFileTrigger = 1; // O:dont; 1:do
+// 算法参数
+const static size_t numToMergeBTC = 3; // BTC:维持N帧拼接，进行N-N匹配，若回环，curr帧其实是稍早的帧，curr'=curr+0.5(1-N)帧
+const static int halfNumToMergeNDTCurr = 2; // NDT:维持(N1=2*this+1)帧拼接用于得到curr，进行N1-N2匹配，若回环，curr与loop都是准确的。
+const static int halfNumToMergeNDTLoop = 4; // NDT:维持(N2=2*this+1)帧拼接用于得到loop，进行N1-N2匹配，若回环，curr与loop都是准确的。
+const static int howLongWeNdtOnce = 3; // 两次NDT之间间隔N帧，例如第20帧回环，那么最快也是20+N+1帧才能回环，可令NDT回环总耗时降低N+1倍
+
+// 测试相关
+const static int keyFrameIdTestPrint = -1; //是否保存特定值的数据 010109：2566/2811(BTC worth than NDT)  010113：3372/1190(BTC worth than NDT)  0220：2113
+const static bool cpoFileTrigger = 0; //是否保存点云重叠度计算输出 O:dont; 1:do
 std::ofstream cpoFile;
-const static std::string cpoFilePathBtc = "/home/jixuanlee/cpoFileBTC.txt";
+const static std::string cpoFilePathBtc = "/home/jixuanlee/cpoFileBTC.txt"; // 点云重叠度计算输出保存路径
 const static std::string cpoFilePathNdt = "/home/jixuanlee/cpoFileNDT.txt";
 
-static size_t numToMergeBTC = 3; // BTC:维持N帧拼接，进行N-N匹配，若回环，curr帧其实是稍早的帧，curr'=curr+0.5(1-N)帧
-static int halfNumToMergeNDTCurr = 2; // NDT:维持(N1=2*this+1)帧拼接用于得到curr，进行N1-N2匹配，若回环，curr与loop都是准确的。
-static int halfNumToMergeNDTLoop = 4; // NDT:维持(N2=2*this+1)帧拼接用于得到loop，进行N1-N2匹配，若回环，curr与loop都是准确的。
-
+/**
+ * @brief 程序关闭trigger
+ * @param signal 
+ */
 void signalHandler(int signal)
 {
     isRunning = false;
 }
 
+/**
+ * @brief rad角度转为deg且限制范围 -180° 到 +180° 以规范化
+ * @param radian 
+ * @return double 
+ */
 double radianToDegreeClamped(double radian) 
 {
     // 将弧度转换为度数，并限制在 -180° 到 +180° 的范围内
@@ -67,6 +83,11 @@ double radianToDegreeClamped(double radian)
     return degrees;
 }
 
+/**
+ * @brief 一组rad角度转为deg且限制范围 -180° 到 +180° 以规范化
+ * @param radVec 
+ * @return Eigen::Vector3d 
+ */
 Eigen::Vector3d turnRadianVec3dToDegreeVec3d(const Eigen::Vector3d& radVec )
 {
     Eigen::Vector3d degVec;
@@ -75,6 +96,11 @@ Eigen::Vector3d turnRadianVec3dToDegreeVec3d(const Eigen::Vector3d& radVec )
     return degVec;
 }
 
+/**
+ * @brief 自定义排pair类型位姿转为Eigen::Matrix4d
+ * @param poseIn 
+ * @param poseOut 
+ */
 void turnPairPose2EigenMatrix4d(const std::pair<Eigen::Vector3d, Eigen::Matrix3d>& poseIn, Eigen::Matrix4d& poseOut)
 {
     poseOut = Eigen::Matrix4d::Identity();
@@ -82,6 +108,10 @@ void turnPairPose2EigenMatrix4d(const std::pair<Eigen::Vector3d, Eigen::Matrix3d
     poseOut.block<3,1>(0,3) = poseIn.first;
 }
 
+/**
+ * @brief 初始化参数
+ * @param nh 
+ */
 void initParam(ros::NodeHandle &nh)
 {
     nh.param<double>("cloud_overlap_thr", cloud_overlap_thr, 0.5);
@@ -132,6 +162,12 @@ void initParam(ros::NodeHandle &nh)
 
 }
 
+/**
+ * @brief 点云坐标变换（输入即输出）
+ * @param inout_cloud 
+ * @param translation 
+ * @param rotation 
+ */
 void transPclPointCloud(pcl::PointCloud<PointType>::Ptr& inout_cloud, 
     const Eigen::Vector3d translation, const Eigen::Matrix3d rotation)
 {
@@ -151,6 +187,13 @@ void transPclPointCloud(pcl::PointCloud<PointType>::Ptr& inout_cloud,
         p.z = pv[2];
     }
 }
+/**
+ * @brief 点云坐标变换（输入输出分离）
+ * @param in_cloud 
+ * @param translation 
+ * @param rotation 
+ * @param out_cloud 
+ */
 void transPclPointCloud(pcl::PointCloud<PointType>::Ptr& in_cloud, 
     const Eigen::Vector3d translation, const Eigen::Matrix3d rotation,
     pcl::PointCloud<PointType>::Ptr& out_cloud)
@@ -174,7 +217,9 @@ void transPclPointCloud(pcl::PointCloud<PointType>::Ptr& in_cloud,
     }
 }
 
-
+/**
+ * @brief 从文件中加载pose、time序列数据
+ */
 void loadPoses()
 {
     // pose is only for visulization and gt overlap calculation
@@ -183,6 +228,13 @@ void loadPoses()
     ROS_INFO_STREAM(print_msg.c_str());
 }
 
+/**
+ * @brief 从bin文件加载1帧序列点云数据
+ * @param cloud 
+ * @param bin_id 
+ * @return true 
+ * @return false 
+ */
 bool loadPointcloudBinAndTrans(pcl::PointCloud<PointType>::Ptr& cloud, 
     size_t bin_id)
 {
@@ -210,6 +262,13 @@ bool loadPointcloudBinAndTrans(pcl::PointCloud<PointType>::Ptr& cloud,
     return true;
 }
 
+/**
+ * @brief 从pcd文件加载1帧序列点云数据
+ * @param cloud 
+ * @param pcd_id 
+ * @return true 
+ * @return false 
+ */
 bool loadPointcloudPcdAndTrans(pcl::PointCloud<PointType>::Ptr& cloud, 
     size_t pcd_id)
 {
@@ -228,6 +287,11 @@ bool loadPointcloudPcdAndTrans(pcl::PointCloud<PointType>::Ptr& cloud,
     return true;
 }
 
+/**
+ * @brief 从pcd加载全部点云数据
+ * @param ori_clouds 
+ * @param doDownSample 
+ */
 void loadAllPointCloud(std::vector<pcl::PointCloud<PointType>::Ptr>& ori_clouds, bool doDownSample = false)
 {
     std::mutex map_mutex;
@@ -259,6 +323,11 @@ void loadAllPointCloud(std::vector<pcl::PointCloud<PointType>::Ptr>& ori_clouds,
     });
 }
 
+/**
+ * @brief 点云预处理
+ * @param cloudIn 
+ * @param cloudOut 
+ */
 void pointCloudPreprocess(const pcl::PointCloud<PointType>::Ptr& cloudIn, pcl::PointCloud<PointType>::Ptr& cloudOut)
 {
     if (!cloudIn) {
@@ -278,6 +347,13 @@ void pointCloudPreprocess(const pcl::PointCloud<PointType>::Ptr& cloudIn, pcl::P
     cloud.reset();
 }
 
+/**
+ * @brief 存储BTC点云场景识别（粗匹配）结果
+ * @param curr_id 
+ * @param best_loop_id 
+ * @param loop_transform 
+ * @param loop_std_pair 
+ */
 void savePlaceRecognitionList(const int curr_id, const int best_loop_id, 
     const std::pair<Eigen::Vector3d, Eigen::Matrix3d> loop_transform,
     const std::vector<std::pair<BTC, BTC>>& loop_std_pair)
@@ -286,11 +362,17 @@ void savePlaceRecognitionList(const int curr_id, const int best_loop_id,
 
     this_place_recog_ptr->match_id_ = std::pair<int,int>(curr_id, best_loop_id);
     this_place_recog_ptr->loop_transform_ = loop_transform;
-    // this_place_recog_ptr->match_list_ = loop_std_pair;
     this_place_recog_ptr->match_list_ = std::move(loop_std_pair); // 避免深拷贝降低开销，但是loop_std_pair后续最好不再用。
     btc_manager->nice_place_recognition_vec.push_back(this_place_recog_ptr);
 }
 
+/**
+ * @brief 将关键位姿保存到本地
+ * @param filename 
+ * @param pose1 
+ * @param pose2 
+ * @param pose3 
+ */
 void savePosesToTxt(const std::string& filename,
     const std::pair<Eigen::Vector3d, Eigen::Matrix3d>& pose1,
     const std::pair<Eigen::Vector3d, Eigen::Matrix3d>& pose2,
@@ -353,7 +435,9 @@ PosesDiff calculateDiffBtw2Poses(const std::pair<Eigen::Vector3d, Eigen::Matrix3
 }
 
 
-
+/**
+ * @brief BTC核心算法：依据粗匹配结果进行精匹配
+ */
 void reLocation()
 {
     T.start(3);
@@ -375,10 +459,9 @@ void reLocation()
     opti_transform.first = Eigen::Vector3d(0.0, 0.0, 0.0);
     opti_transform.second = Eigen::Matrix3d::Identity();
     Eigen::Vector3d loop_rot = turnRadianVec3dToDegreeVec3d(loop_transform.second.eulerAngles(0, 1, 2));
-    // loop_transform = opti_transform;
 
-    std::cout <<GREEN_COLOR<< "[BTC][PIcp] t of cupipei: " << loop_transform.first.transpose() <<RESET_COLOR<< std::endl;
-    std::cout << "[BTC][PIcp] rot of cupipei: " << loop_rot.transpose() << std::endl;
+    std::cout <<GREEN_COLOR<< "[BTC][PIcp] t of rough: " << loop_transform.first.transpose() <<RESET_COLOR<< std::endl;
+    std::cout << "[BTC][PIcp] rot of rough: " << loop_rot.transpose() << std::endl;
 
     // 使用原始平面构建残差，约束更多
     pcl::shared_ptr<pcl::PointCloud<pcl::PointXYZINormal>> curr_planes_points(new pcl::PointCloud<pcl::PointXYZINormal>);
@@ -388,7 +471,7 @@ void reLocation()
 
     // 执行精匹配
     bool isPlaneIcpSuccess = false;
-    isPlaneIcpSuccess = btc_manager->PlaneGeomrtricIcp(curr_planes_points, loop_planes_points, loop_transform, opti_transform, true);
+    isPlaneIcpSuccess = btc_manager->PlaneGeomrtricIcp(curr_planes_points, loop_planes_points, loop_transform, opti_transform);
     Eigen::Vector3d opti_rot = turnRadianVec3dToDegreeVec3d(opti_transform.second.eulerAngles(0, 1, 2));
 
     PosesDiff loop_opti_pd = calculateDiffBtw2Poses(loop_transform,opti_transform); // [位姿之差的差]基于BTC与平面优化：相较于BTC粗匹配给出的[帧间粗估计位姿]，平面优化精匹配给出的[帧间精估计位姿]变化了多少
@@ -412,99 +495,100 @@ void reLocation()
     T.print(3, "[BTC] Timer cost of accurate btc: ");
 
     // for debug
-    // static int number2save = 1;
-    // static int nowNumber = 0;
-    // if (number2save == nowNumber++)
     // if(this_nice_place_recognition->match_id_.first == keyFrameIdTestPrint)
+    if (1)
     {
-        pcl::PointCloud<PointType>::Ptr curr_points_odom(new pcl::PointCloud<PointType>); // curr单帧的ori变换后全局点云
-        pcl::PointCloud<PointType>::Ptr loop_points_odom(new pcl::PointCloud<PointType>); // loop拼接多帧的ori变换的全局点云
-        pcl::PointCloud<PointType>::Ptr curr_points_opti_by_p2picp(new pcl::PointCloud<PointType>); // curr单帧的opti变换后全局点云
-
-        if (!loadPointcloudPcdAndTrans(curr_points_odom, this_nice_place_recognition->match_id_.first)) 
-            ROS_ERROR("[BTC] Test: get pcd failed!");
-
-        transPclPointCloud(curr_points_odom, ori_curr_pose.first, ori_curr_pose.second);
-        transPclPointCloud(curr_points_odom, opti_transform.first, opti_transform.second, curr_points_opti_by_p2picp);
-        
-        // 为了测试
-        int rsLoopID = this_nice_place_recognition->match_id_.second;
-        for (int j=std::max(0,int(rsLoopID)-halfNumToMergeNDTLoop); j<=std::min(int(pose_list.size()),int(rsLoopID)+halfNumToMergeNDTLoop); j++)
+        if (isPlaneIcpSuccess)
         {
-            pcl::PointCloud<PointType>::Ptr loop_points_tmp(new pcl::PointCloud<PointType>);
-            if (!loadPointcloudPcdAndTrans(loop_points_tmp, j)) 
+            pcl::PointCloud<PointType>::Ptr curr_points_odom(new pcl::PointCloud<PointType>); // curr单帧的ori变换后全局点云
+            pcl::PointCloud<PointType>::Ptr loop_points_odom(new pcl::PointCloud<PointType>); // loop拼接多帧的ori变换的全局点云
+            pcl::PointCloud<PointType>::Ptr curr_points_opti_by_p2picp(new pcl::PointCloud<PointType>); // curr单帧的opti变换后全局点云
+
+            if (!loadPointcloudPcdAndTrans(curr_points_odom, this_nice_place_recognition->match_id_.first)) 
                 ROS_ERROR("[BTC] Test: get pcd failed!");
-            transPclPointCloud(loop_points_tmp, pose_list[j].first, pose_list[j].second);
-            *loop_points_odom += *loop_points_tmp;
-        }
 
-        Eigen::Matrix4d opti_transform_mat = Eigen::Matrix4d::Identity();
-        opti_transform_mat.block<3,3>(0,0) = opti_transform.second;
-        opti_transform_mat.block<3,1>(0,3) = opti_transform.first;
-
-        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_points_odom.pcd", *curr_points_odom);
-        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_points_opti.pcd", *curr_points_opti_by_p2picp);
-        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop_points_odom.pcd", *loop_points_odom);
-        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr-planes.pcd", *curr_planes_points);
-        // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop-planesloop_planes_points.pcd", *loop_planes_points);
-        // savePosesToTxt("/home/jixuanlee/pcdsOF523/btc-poses-for-compare.txt", ori_loop_pose, ori_curr_pose, aft_curr_pose);
-
-        // 计算重合度
-        calculPcdOverlap cpo(0.5);
-        double cpoRateOri = -1;
-        double cpoRateOpti = -1;
-        Eigen::Matrix4d ori_loop_pose_mat;
-        turnPairPose2EigenMatrix4d(ori_loop_pose,ori_loop_pose_mat);
-        cpo.make_voxel_map(loop_points_odom, ori_loop_pose_mat, 200);
-        // 输入的点云：来自curr的单帧(odom系，其是由lidar2odom-ori变换到的)，输入的位姿：单位阵(暂时没用)
-        cpoRateOri = cpo.calculate_overlap_rate(curr_points_odom, Eigen::Matrix4d::Identity());
-        // 输入的点云：来自curr的单帧(odom系，其是由lidar2odom-opti变换到的)，输入的位姿：单位阵(暂时没用)
-        cpoRateOpti = cpo.calculate_overlap_rate(curr_points_opti_by_p2picp, Eigen::Matrix4d::Identity());
-        std::cout<<GREEN_COLOR<<"[CPO-BTC] The rate of pcds(ori-ori):"<<cpoRateOri<<" ,and the pcds(ori-opti):"<<cpoRateOpti<<RESET_COLOR<<std::endl;
-    
-        // 结果保存为txt
-        if (cpoFileTrigger == true)
-        {
-            static bool isFirstTime = true;
-            if (isFirstTime)
+            transPclPointCloud(curr_points_odom, ori_curr_pose.first, ori_curr_pose.second);
+            transPclPointCloud(curr_points_odom, opti_transform.first, opti_transform.second, curr_points_opti_by_p2picp);
+            
+            // 为了测试
+            int rsLoopID = this_nice_place_recognition->match_id_.second;
+            for (int j=std::max(0,int(rsLoopID)-halfNumToMergeNDTLoop); j<=std::min(int(pose_list.size()),int(rsLoopID)+halfNumToMergeNDTLoop); j++)
             {
-                isFirstTime = false;
-                cpoFile.open(cpoFilePathBtc);
-                if (!cpoFile.is_open()) {
-                    std::cerr << "Cant Open txt: "<< cpoFilePathBtc.c_str() << std::endl;
-                    return;
+                pcl::PointCloud<PointType>::Ptr loop_points_tmp(new pcl::PointCloud<PointType>);
+                if (!loadPointcloudPcdAndTrans(loop_points_tmp, j)) 
+                    ROS_ERROR("[BTC] Test: get pcd failed!");
+                transPclPointCloud(loop_points_tmp, pose_list[j].first, pose_list[j].second);
+                *loop_points_odom += *loop_points_tmp;
+            }
+
+            Eigen::Matrix4d opti_transform_mat = Eigen::Matrix4d::Identity();
+            opti_transform_mat.block<3,3>(0,0) = opti_transform.second;
+            opti_transform_mat.block<3,1>(0,3) = opti_transform.first;
+
+            // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_points_odom.pcd", *curr_points_odom);
+            // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_points_opti.pcd", *curr_points_opti_by_p2picp);
+            // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop_points_odom.pcd", *loop_points_odom);
+            // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr-planes.pcd", *curr_planes_points);
+            // pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop-planesloop_planes_points.pcd", *loop_planes_points);
+            // savePosesToTxt("/home/jixuanlee/pcdsOF523/btc-poses-for-compare.txt", ori_loop_pose, ori_curr_pose, aft_curr_pose);
+
+            // 计算重合度
+            calculPcdOverlap cpo(0.5);
+            double cpoRateOri = -1;
+            double cpoRateOpti = -1;
+            Eigen::Matrix4d ori_loop_pose_mat;
+            turnPairPose2EigenMatrix4d(ori_loop_pose,ori_loop_pose_mat);
+            cpo.make_voxel_map(loop_points_odom, ori_loop_pose_mat, 200);
+            // 输入的点云：来自curr的单帧(odom系，其是由lidar2odom-ori变换到的)，输入的位姿：单位阵(暂时没用)
+            cpoRateOri = cpo.calculate_overlap_rate(curr_points_odom, Eigen::Matrix4d::Identity());
+            // 输入的点云：来自curr的单帧(odom系，其是由lidar2odom-opti变换到的)，输入的位姿：单位阵(暂时没用)
+            cpoRateOpti = cpo.calculate_overlap_rate(curr_points_opti_by_p2picp, Eigen::Matrix4d::Identity());
+            std::cout<<GREEN_COLOR<<"[CPO-BTC] The rate of pcds(ori-ori):"<<cpoRateOri<<" ,and the pcds(ori-opti):"<<cpoRateOpti<<RESET_COLOR<<std::endl;
+        
+            // 结果保存为txt
+            if (cpoFileTrigger == true)
+            {
+                static bool isFirstTime = true;
+                if (isFirstTime)
+                {
+                    isFirstTime = false;
+                    cpoFile.open(cpoFilePathBtc);
+                    if (!cpoFile.is_open()) {
+                        std::cerr << "Cant Open txt: "<< cpoFilePathBtc.c_str() << std::endl;
+                        return;
+                    }
+                    std::string line = "BTC Loop Nice: currID loopID overlapOri overloopOpti changeOverlap tCurrOri(xyz-m) rotCurrOri(rpy-deg) tCurrOpti(xyz-m) rotCurrOpti(rpy-deg) changeBtwCurr(dis-m)";
+                    cpoFile << line << "\n";
                 }
-                std::string line = "BTC Loop Nice: currID loopID overlapOri overloopOpti changeOverlap tCurrOri(xyz-m) rotCurrOri(rpy-deg) tCurrOpti(xyz-m) rotCurrOpti(rpy-deg) changeBtwCurr(dis-m)";
+
+                if (cpoRateOpti - cpoRateOri < 0.03)
+                    return; //如果优化很小，甚至是负优化，就不要存了
+                    
+                std::string line = 
+                    std::to_string(this_nice_place_recognition->match_id_.first) + " " + 
+                    std::to_string(this_nice_place_recognition->match_id_.second) + " " + 
+                    std::to_string(cpoRateOri) + " " + 
+                    std::to_string(cpoRateOpti) + " " +
+                    std::to_string(cpoRateOpti - cpoRateOri) + " " +
+                    std::to_string(ori_curr_pose.first[0]) + " " + 
+                    std::to_string(ori_curr_pose.first[1]) + " " + 
+                    std::to_string(ori_curr_pose.first[2]) + " " +
+                    std::to_string(bef_curr_rot[0]) + " " +
+                    std::to_string(bef_curr_rot[1]) + " " +
+                    std::to_string(bef_curr_rot[2]) + " " +
+                    std::to_string(aft_curr_pose.first[0]) + " " + 
+                    std::to_string(aft_curr_pose.first[1]) + " " + 
+                    std::to_string(aft_curr_pose.first[2]) + " " +
+                    std::to_string(aft_curr_rot[0]) + " " +
+                    std::to_string(aft_curr_rot[1]) + " " +
+                    std::to_string(aft_curr_rot[2]) + " " +
+                    std::to_string((ori_curr_pose.first - aft_curr_pose.first).norm())
+                    ;
+                    
                 cpoFile << line << "\n";
             }
 
-            if (cpoRateOpti - cpoRateOri < 0.02)
-                return; //如果优化很小，甚至是负优化，就不要存了
-                
-            std::string line = 
-                std::to_string(this_nice_place_recognition->match_id_.first) + " " + 
-                std::to_string(this_nice_place_recognition->match_id_.second) + " " + 
-                std::to_string(cpoRateOri) + " " + 
-                std::to_string(cpoRateOpti) + " " +
-                std::to_string(cpoRateOpti - cpoRateOri) + " " +
-                std::to_string(ori_curr_pose.first[0]) + " " + 
-                std::to_string(ori_curr_pose.first[1]) + " " + 
-                std::to_string(ori_curr_pose.first[2]) + " " +
-                std::to_string(bef_curr_rot[0]) + " " +
-                std::to_string(bef_curr_rot[1]) + " " +
-                std::to_string(bef_curr_rot[2]) + " " +
-                std::to_string(aft_curr_pose.first[0]) + " " + 
-                std::to_string(aft_curr_pose.first[1]) + " " + 
-                std::to_string(aft_curr_pose.first[2]) + " " +
-                std::to_string(aft_curr_rot[0]) + " " +
-                std::to_string(aft_curr_rot[1]) + " " +
-                std::to_string(aft_curr_rot[2]) + " " +
-                std::to_string((ori_curr_pose.first - aft_curr_pose.first).norm())
-                ;
-                
-            cpoFile << line << "\n";
         }
-
     }
         
 
@@ -535,6 +619,9 @@ void reLocation()
 
 }
 
+/**
+ * @brief BTC核心算法：针对从输入中提取到的每一关键帧，使用点云进行BTC描述符构建与全局字典匹配，进行粗匹配、可视化、精匹配调用（仅在粗匹配成功后）
+ */
 void placeRecognition()
 {
     int triggle_loop_num = 0; // 仅靠BTC的粗匹配回环成功次数（BTC触发）
@@ -544,7 +631,6 @@ void placeRecognition()
     ros::Rate slow_loop(1000);
 
     std::deque<pcl::PointCloud<PointType>::Ptr> submap_trans_cloud; // 存储临近的odom的点云
-
 
     // 执行核心的场景识别与重定位算法
     for (size_t submap_id = 0; submap_id < pose_list.size(); ++submap_id)
@@ -567,7 +653,7 @@ void placeRecognition()
         }
         transPclPointCloud(curr_cloud, pose_list[submap_id].first, pose_list[submap_id].second); //转移到odom系
 
-        // 【优化】用sub-map代替本帧
+        // 用sub-map代替本帧
         if (submap_trans_cloud.size() > numToMergeBTC)
             submap_trans_cloud.pop_front();
         submap_trans_cloud.push_back(curr_cloud);
@@ -594,7 +680,7 @@ void placeRecognition()
         {
             if (btcs_vec.size() == 0)
             {
-                ROS_ERROR("[BTC] The BTC is Empty!");
+                ROS_ERROR_STREAM("[BTC] The ID:"<<submap_id<<" BTC is Empty!");
                 continue;
             }
             btc_manager->SearchLoop(btcs_vec, search_result, loop_transform, loop_std_pair);
@@ -878,7 +964,17 @@ void placeRecognition()
 }
 
 
-
+/**
+ * @brief NDT算法核心：距离检测是否回环（同时也根据时间、ID差等判断）
+ * @param currID 
+ * @param pose_cloud_map 
+ * @param searchRadius 
+ * @param searchTimeTh 
+ * @param searchIdxTh 
+ * @param loopID 
+ * @return true 
+ * @return false 
+ */
 bool detectRadiusSearchLoop(const int currID, const pcl::PointCloud<pcl::PointXYZ>::Ptr& pose_cloud_map, 
     const float searchRadius, const float searchTimeTh, const int searchIdxTh, int& loopID)
 {
@@ -917,12 +1013,14 @@ bool detectRadiusSearchLoop(const int currID, const pcl::PointCloud<pcl::PointXY
         return false;
     }
 
-    // std::cout<<"******debug time="<<abs(time_list[loopID] - time_list[currID])<<std::endl;
-    // std::cout<<"******debug dis="<<(pose_list[currID].first-pose_list[loopID].first).norm()<<std::endl;
-
     return true;
 }
 
+/**
+ * @brief NDT算法核心：执行NDT
+ * @param ndt_ 
+ * @param radiusSearchParam 
+ */
 void ndtLoopDetect(OnlineLTSlam::ndtLocalizer& ndt_, const float* radiusSearchParam)
 {
     // 所有pose格式转换 
@@ -1000,7 +1098,6 @@ void ndtLoopDetect(OnlineLTSlam::ndtLocalizer& ndt_, const float* radiusSearchPa
         
         // RS回环过关，降采样回环帧数，如果不是关键采样帧，发布个白色的路径就直接下一帧了。如果是关键采样帧，执行NDT。
         static int lastRsCurrID = i;
-        const static int howLongWeNdtOnce = 5; // 两次NDT之间间隔N帧，例如第20帧回环，那么最快也是20+N+1帧才能回环
         if (i!=lastRsCurrID && i-lastRsCurrID <= howLongWeNdtOnce)
         {
             if (i > 0)
@@ -1117,17 +1214,14 @@ void ndtLoopDetect(OnlineLTSlam::ndtLocalizer& ndt_, const float* radiusSearchPa
             result_ndt.pose.orientation.z);
         currPoseAft.second = thisQ.toRotationMatrix();
 
-        // PosesDiff poseDiffCurrBtwNdtBefAft = calculateDiffBtw2Poses(currPoseOri, currPoseAft);
         PosesDiff poseDiffBefNdtBtwLoopCurr = calculateDiffBtw2Poses(loopPoseOri, currPoseOri);
         Eigen::Vector3d thisPoseOriRot = turnRadianVec3dToDegreeVec3d(currPoseOri.second.eulerAngles(0, 1, 2));
         Eigen::Vector3d thisPoseAftRot = turnRadianVec3dToDegreeVec3d(currPoseAft.second.eulerAngles(0, 1, 2));
 
         
         // for debug 
-        // static int number2save = 0;
-        // static int nowNumber = 0;
-        // if (number2save == nowNumber++)
         // if(i == keyFrameIdTestPrint)
+        if (1)
         {
             // 无论上述NDT使用多少帧拼接的curr进行匹配，这里测试均采用单帧进行测算。
             pcl::PointCloud<PointType>::Ptr rsCurrSubmapOptiByNdt(new pcl::PointCloud<PointType>);
@@ -1162,14 +1256,14 @@ void ndtLoopDetect(OnlineLTSlam::ndtLocalizer& ndt_, const float* radiusSearchPa
                     cpoFile.open(cpoFilePathNdt);
                     if (!cpoFile.is_open()) {
                         std::cerr << "Cant Open txt: "<< cpoFilePathNdt.c_str() << std::endl;
-                        return;
+                        continue;
                     }
                     std::string line = "NDT Loop Nice: currID loopID overlapOri overloopOpti changeOverlap tCurrOri(xyz-m) rotCurrOri(rpy-deg) tCurrOpti(xyz-m) rotCurrOpti(rpy-deg) changeBtwCurr(dis-m)";
                     cpoFile << line << "\n";
                 }
 
-                if (cpoRateOpti - cpoRateOri < 0.02)
-                    return; //如果优化很小，甚至是负优化，就不要存了
+                if (cpoRateOpti - cpoRateOri < 0.03)
+                    continue; //如果优化很小，甚至是负优化，就不要存了
 
                 std::string line = 
                     std::to_string(i) + " " + 
@@ -1197,22 +1291,24 @@ void ndtLoopDetect(OnlineLTSlam::ndtLocalizer& ndt_, const float* radiusSearchPa
         }
 
         // 打印
-        // Trans：根据输入pose，2帧间定位的变换量（含误差）
-        // Position：优化前后，本帧定位数据
-        // Change：优化前后，本帧定位数据被优化了多少
+        {
+            // Trans：根据输入pose，2帧间定位的变换量（含误差）
+            // Position：优化前后，本帧定位数据
+            // Change：优化前后，本帧定位数据被优化了多少
 
-        std::cout <<GREEN_COLOR<< "[NDT] Loop State: RS-true, NDT-true: " << i<<"&"<<rsLoopID <<RESET_COLOR<< std::endl;
-        std::cout << "[NDT] Trans btw curr&loop bef: Translation: " << poseDiffBefNdtBtwLoopCurr.pose_diff.first.transpose() << std::endl;
-        std::cout << "[NDT] Trans btw curr&loop bef: Rotation: " << poseDiffBefNdtBtwLoopCurr.rot_diff_rpy_deg.transpose() <<" in RPY deg."<< std::endl;
-        std::cout <<GREEN_COLOR<< "[NDT] Position of curr bef: Translation: " << currPoseOri.first.transpose() <<RESET_COLOR<< std::endl;
-        std::cout << "[NDT] Position of curr bef: Rotation: " << thisPoseOriRot.transpose() << " in RPY deg."<< std::endl;
-        std::cout <<GREEN_COLOR<< "[NDT] Position of curr aft: Translation: " << currPoseAft.first.transpose() <<RESET_COLOR<< std::endl;
-        std::cout << "[NDT] Position of curr aft: Rotation: " << thisPoseAftRot.transpose() << " in RPY deg."<< std::endl;
-        std::cout << "[NDT] Change of curr position: Translation: [" << (currPoseOri.first - currPoseAft.first).norm() << "] m."<< std::endl;
-        // std::cout<<std::endl;
+            std::cout <<GREEN_COLOR<< "[NDT] Loop State: RS-true, NDT-true: " << i<<"&"<<rsLoopID <<RESET_COLOR<< std::endl;
+            std::cout << "[NDT] Trans btw curr&loop bef: Translation: " << poseDiffBefNdtBtwLoopCurr.pose_diff.first.transpose() << std::endl;
+            std::cout << "[NDT] Trans btw curr&loop bef: Rotation: " << poseDiffBefNdtBtwLoopCurr.rot_diff_rpy_deg.transpose() <<" in RPY deg."<< std::endl;
+            std::cout <<GREEN_COLOR<< "[NDT] Position of curr bef: Translation: " << currPoseOri.first.transpose() <<RESET_COLOR<< std::endl;
+            std::cout << "[NDT] Position of curr bef: Rotation: " << thisPoseOriRot.transpose() << " in RPY deg."<< std::endl;
+            std::cout <<GREEN_COLOR<< "[NDT] Position of curr aft: Translation: " << currPoseAft.first.transpose() <<RESET_COLOR<< std::endl;
+            std::cout << "[NDT] Position of curr aft: Rotation: " << thisPoseAftRot.transpose() << " in RPY deg."<< std::endl;
+            std::cout << "[NDT] Change of curr position: Translation: [" << (currPoseOri.first - currPoseAft.first).norm() << "] m."<< std::endl;
+            // std::cout<<std::endl;
 
-        T.print(1, "[NDT] Timer cost of all ndt: ");
-        std::cout<<std::endl;
+            T.print(1, "[NDT] Timer cost of all ndt: ");
+            std::cout<<std::endl;
+        }
 
         rate.sleep();
     }
@@ -1226,9 +1322,13 @@ void ndtLoopDetect(OnlineLTSlam::ndtLocalizer& ndt_, const float* radiusSearchPa
 
 }
 
+/**
+ * @brief NDT算法入口
+ * @param nh 
+ */
 void ndtEntrance(ros::NodeHandle& nh)
 {
-    // 初始化NDT插件
+    // 初始化NDT模块
     OnlineLTSlam::ndtLocalizer ndt_(nh);
     static double trans_epsilon = 0.05;
     static double step_size = 0.10;
@@ -1259,7 +1359,7 @@ int main(int argc, char **argv)
     else if (mode == 1)
         ndtEntrance(nh);
     else     
-        std::cout<<"[BTC]Error mode!"<<std::endl;
+        std::cout<<"[BTC-NDT]Error mode!"<<std::endl;
 
     
     return 0;

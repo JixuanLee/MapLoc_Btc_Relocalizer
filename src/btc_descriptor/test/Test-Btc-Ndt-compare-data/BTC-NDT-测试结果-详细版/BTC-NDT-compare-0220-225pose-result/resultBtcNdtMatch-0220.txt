@@ -1,0 +1,4 @@
+currIDofBoth btcCpoImprovePrecent ndtCpoImprovePrecent
+4541 7.498959 5.896861
+4541 7.498959 5.896861
+6713 9.185119 4.581561

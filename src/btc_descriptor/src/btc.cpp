@@ -846,20 +846,6 @@ void BtcDescManager::planesToPoints(const std::vector<std::shared_ptr<Plane>>& p
   points_ptr->header.frame_id = "odom"; // 表示这些平面的位置、法向量是坐落在odom下的。
 }
 
-
-bool BtcDescManager::checkPlaneIcpResult(const std::pair<Eigen::Vector3d, Eigen::Matrix3d>& transform)
-{
-  // TODO：待完善
-  // static double thresh_t = 3.0;
-  // if (transform.first.norm() > thresh_t) // 20250217:这个检查没啥道理
-  // {
-  //   std::cout<<"[BTC] PlaneIcp result is bad in t."<<std::endl<<std::endl;
-  //   return false;
-  // }
-
-  return true;
-}
-
 /**
  * @brief 前提：src来自本帧，tar来自最优粗匹配帧。针对每一个src平面，基于初始变换将其同步搭配tar坐标系，
  * 进而找到该src理应最靠近的tar平面。建立残差：将src平面基于初始变换同步到tar坐标系，然后算出src平面位置点到tar平面的[点到面]距离作为残差。
@@ -877,8 +863,7 @@ bool BtcDescManager::PlaneGeomrtricIcp(
   const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &source_cloud,
   const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &target_cloud,
   std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform,
-  std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform_opti, 
-  const bool doOptiCheck)
+  std::pair<Eigen::Vector3d, Eigen::Matrix3d> &transform_opti)
 {
   // Step 1: 构建 KD 树用于快速搜索邻近点
   pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kd_tree(new pcl::KdTreeFLANN<pcl::PointXYZ>);
@@ -886,7 +871,6 @@ bool BtcDescManager::PlaneGeomrtricIcp(
 
   // 将tar平面转换为仅包含位置信息的点云
   for (size_t i = 0; i < target_cloud->size(); i++) {
-  // for (size_t i = 0; i < std::min(20, int(source_cloud->size())); i++) {
     pcl::PointXYZ pi;
     pi.x = target_cloud->points[i].x; // 设置点的 x 坐标
     pi.y = target_cloud->points[i].y; // 设置点的 y 坐标
@@ -928,22 +912,12 @@ bool BtcDescManager::PlaneGeomrtricIcp(
   std::vector<float> pointNKNSquaredDistance(1); // 存储搜索到的邻近点距离
   int useful_match = 0; // 记录有效匹配点的数量
 
-  // // for debug
-  // static int number2save = 1;
-  // static int nowNumber = 0;
-  // pcl::PointCloud<pcl::PointXYZ>::Ptr curr_nice_plane_pointcloud_trans_by_looptransform(new pcl::PointCloud<pcl::PointXYZ>());
-  // pcl::PointCloud<pcl::PointXYZINormal>::Ptr curr_nice_plane_pointcloud_odom(new pcl::PointCloud<pcl::PointXYZINormal>());
-  // pcl::PointCloud<pcl::PointXYZINormal>::Ptr loop_nice_plane_pointcloud_odom(new pcl::PointCloud<pcl::PointXYZINormal>());
-
   // 遍历每个src平面
   for (size_t i = 0; i < source_cloud->size(); i++) 
-  // for (size_t i = 0; i < std::min(15, int(source_cloud->size())); i++) 
   {
     pcl::PointXYZINormal searchPoint = source_cloud->points[i]; // 当前搜索点
     Eigen::Vector3d pi(searchPoint.x, searchPoint.y, searchPoint.z); // 当前点的位置
-    // std::cout<<"$$$$$ pi = "<<pi<<std::endl;
     pi = rot * pi + t; // 将当前点变换到tar坐标系
-    // std::cout<<"$$$$$ rot = "<<rot<<" t = "<<t<<std::endl;
 
     // 将变换后的点转换为 pcl::PointXYZ 类型
     pcl::PointXYZ use_search_point;
@@ -958,9 +932,6 @@ bool BtcDescManager::PlaneGeomrtricIcp(
     // 在tar的平面中，找1个与当前src平面位置最靠近的tar平面
     if (kd_tree->nearestKSearch(use_search_point, 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0) 
     {
-      // std::cout<<"@@@@@ = "<<std::sqrt(pointNKNSquaredDistance[0])<<std::endl;
-      // std::cout<<"&&&&& = "<<pointIdxNKNSearch[0]<<std::endl;
-      // std::cout<<"$$$$$ = "<<target_cloud->points[pointIdxNKNSearch[0]]<<std::endl;
       pcl::PointXYZINormal nearstPoint = target_cloud->points[pointIdxNKNSearch[0]]; // 最近tar平面
       Eigen::Vector3d tpi(nearstPoint.x, nearstPoint.y, nearstPoint.z); // 最近tar的位置
       Eigen::Vector3d tni(nearstPoint.normal_x, nearstPoint.normal_y, nearstPoint.normal_z); // 最近tar的法向量
@@ -972,12 +943,6 @@ bool BtcDescManager::PlaneGeomrtricIcp(
       double point_to_plane = fabs(tni.transpose() * (pi - tpi)); // src位置点-最近tar平面的点到面距离
 
       // 判断是否为有效匹配点:2个平面必须几乎平行、平面点到面距离很小、平面位置点到点距离够近
-// std::cout << "[Debug] Match attempt " << i
-// << ": normal_diff = " << normal_inc.norm()
-// << ", normal_sum = " << normal_add.norm()
-// << ", point_to_plane = " << point_to_plane
-// << ", point_to_point = " << point_to_point_dis
-// << std::endl;
       if ((normal_inc.norm() < config_setting_.normal_threshold_ ||
           normal_add.norm() < config_setting_.normal_threshold_) &&
           point_to_plane < config_setting_.dis_threshold_ &&
@@ -994,53 +959,15 @@ bool BtcDescManager::PlaneGeomrtricIcp(
                                     source_cloud->points[i].normal_y,
                                     source_cloud->points[i].normal_z);
 
-
-        // // for debug
-        // curr_nice_plane_pointcloud_trans_by_looptransform->points.push_back(use_search_point);
-        // curr_nice_plane_pointcloud_odom->points.push_back(source_cloud->points[i]);
-        // loop_nice_plane_pointcloud_odom->points.push_back(nearstPoint);
-
-        // std::cout<<"This pair of plane : curr-loop:"<<i<<"-"<<pointIdxNKNSearch[0]<<std::endl;
-        // std::cout<<"Curr plane-bef : pos"<<curr_point<<std::endl;
-        // std::cout<<"Curr plane-bef : nor"<<curr_normal<<std::endl;
-        // std::cout<<"$$$$$ Curr plane-aft = "<<pi<<std::endl;
-        // std::cout<<"Loop plane : pos"<<tpi<<std::endl;
-        // std::cout<<"Loop plane : nor"<<tni<<std::endl;
-        // std::cout<<std::endl;
-
         // 创建点到平面的残差函数，输入了2个平面各自在全局下的位置、法向量，构造src平面位置点到其最近tar平面的距离（点到面距离）作为残差
         cost_function = PlaneSolver::Create(curr_point, curr_normal, tpi, tni); 
         problem.AddResidualBlock(cost_function, loss_function, para_q, para_t); // 添加残差块，包括残差、损失函数（无）、待优化参数
       }
     }
-    
-      // std::cout<<"@@@@@ = "<<std::sqrt(pointNKNSquaredDistance[0])<<std::endl;
-      // std::cout<<"&&&&& = "<<pointIdxNKNSearch[0]<<std::endl;
-      // std::cout<<"$$$$$ tar = "<<target_cloud->points[pointIdxNKNSearch[0]]<<std::endl;
-      // std::cout<<"$$$$$ src-aft= "<<use_search_point<<std::endl;
-      // std::cout<<"$$$$$ = "<<transform.first<<std::endl;
-
+ 
   }
   // for debug
-  // std::cout<<"@@@@ use num = "<<useful_match<<std::endl;
-  // // 设置点云的宽度和高度
-  // if (number2save == nowNumber++)
-  // {
-  //   curr_nice_plane_pointcloud_trans_by_looptransform->width = curr_nice_plane_pointcloud_trans_by_looptransform->points.size();
-  //   curr_nice_plane_pointcloud_trans_by_looptransform->height = 1;
-  //   curr_nice_plane_pointcloud_trans_by_looptransform->is_dense = false;
-  
-  //   curr_nice_plane_pointcloud_odom->width = curr_nice_plane_pointcloud_odom->points.size();
-  //   curr_nice_plane_pointcloud_odom->height = 1;
-  //   curr_nice_plane_pointcloud_odom->is_dense = false;
-  
-  //   loop_nice_plane_pointcloud_odom->width = loop_nice_plane_pointcloud_odom->points.size();
-  //   loop_nice_plane_pointcloud_odom->height = 1;
-  //   loop_nice_plane_pointcloud_odom->is_dense = false;
-  //   pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_nice_plane_pointcloud_trans_by_looptransform.pcd", *curr_nice_plane_pointcloud_trans_by_looptransform);
-  //   pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/curr_nice_plane_pointcloud_odom.pcd", *curr_nice_plane_pointcloud_odom);
-  //   pcl::io::savePCDFile("/home/jixuanlee/pcdsOF523/loop_nice_plane_pointcloud_odom.pcd", *loop_nice_plane_pointcloud_odom);
-  // }
+  std::cout<<"[BTC][Planes] Use Planes num = "<<useful_match<<std::endl;
 
 
   // Step 4: 配置并运行 Ceres 求解器
@@ -1060,14 +987,7 @@ bool BtcDescManager::PlaneGeomrtricIcp(
   // 输出优化后的变换
   transform_opti.first = t;
   transform_opti.second = rot;
-  if (doOptiCheck)
-  {
-    if (!checkPlaneIcpResult(transform_opti))
-    {
-      transform_opti = transform;
-      return false;
-    }
-  }
+
   return true;
 
 }

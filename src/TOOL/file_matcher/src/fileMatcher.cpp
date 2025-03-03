@@ -2,7 +2,7 @@
  * @Author: Jixuan Lee
  * @Date: 2025-02-27 12:08:11
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-02-27 14:31:54
+ * @LastEditTime: 2025-03-03 11:22:43
  * @FilePath: /OnlineLTSlam/src/TOOL/file_matcher/src/fileMatcher.cpp
  * @Description: 
  * @Logs: 
@@ -18,7 +18,6 @@ std::vector<std::pair<std::string, std::string>> fileMatcher::processBtcNdtFiles
     std::vector<std::pair<std::string, std::string>> matchedPairs;
     std::unordered_map<int, std::string> file1Data;
 
-    // Read the first file and store its data in a hash map
     std::ifstream inputFile1(file1_);
     if (!inputFile1.is_open()) {
         std::cerr << "Error opening file: " << file1_ << std::endl;
@@ -51,7 +50,6 @@ std::vector<std::pair<std::string, std::string>> fileMatcher::processBtcNdtFiles
         return matchedPairs;
     }
 
-    // Skip the header line for the second file
     if (std::getline(inputFile2, line)) {
         std::cout << "Skipped header line from file2: " << line << std::endl;
     }

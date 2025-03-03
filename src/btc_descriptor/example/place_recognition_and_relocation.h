@@ -2,7 +2,7 @@
  * @Author: Jixuan Lee
  * @Date: 2025-01-17 17:15:17
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-02-26 12:30:44
+ * @LastEditTime: 2025-03-03 10:48:06
  * @FilePath: /OnlineLTSlam/src/btc_descriptor/example/place_recognition_and_relocation.h
  * @Description: 
  * @Logs: 
@@ -30,11 +30,33 @@
 #include "include/ndtLocalizer.h"
 #include <calcul_pcd_overlap/calculPcdOverlap.h>
 
+typedef pcl::PointXYZI PointType;
+
+typedef struct PosesDiff {
+    Eigen::Vector3d t_diff_xyz;
+    double t_diff_value;
+
+    Eigen::Matrix3d rot_diff_mat;
+    Eigen::Vector3d rot_diff_rpy_deg;
+    double rot_diff_value_deg;
+
+    std::pair<Eigen::Vector3d, Eigen::Matrix3d> pose_diff;
+} PosesDiff;
+  
 /**
  * @brief ljx 自定义时间打印类 
- * TODO: 自定义timer尺寸
  */
 class Timer {
+
+  // using example:
+  // Timer T;
+  // T.start(0); // id should be 0-19.
+  // *some program A*
+  // T.start(1);
+  // *some program B*
+  // T.elapsed(1); // output the time we cost during B on the terminal.
+  // T.print(0, "All programs cost: "); // output the time and some strings.
+  
   public:
     Timer(){
       std::fill(std::begin(started_), std::end(started_), false);
@@ -65,19 +87,6 @@ class Timer {
       }
     }
 };
-
-typedef pcl::PointXYZI PointType;
-
-typedef struct PosesDiff {
-    Eigen::Vector3d t_diff_xyz;
-    double t_diff_value;
-
-    Eigen::Matrix3d rot_diff_mat;
-    Eigen::Vector3d rot_diff_rpy_deg;
-    double rot_diff_value_deg;
-
-    std::pair<Eigen::Vector3d, Eigen::Matrix3d> pose_diff;
-  } PosesDiff;
 
 Timer T;
   

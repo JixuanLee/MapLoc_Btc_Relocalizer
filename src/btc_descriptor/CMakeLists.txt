@@ -34,9 +34,6 @@ find_package(Threads)
 find_package(Ceres REQUIRED)
 find_package(GTSAM REQUIRED QUIET)
 
-# find_package(catkin REQUIRED COMPONENTS # 已在相关包中编译为lib
-#   calcul_pcd_overlap
-# )
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)

@@ -2,9 +2,9 @@
  * @Author: Jixuan Lee
  * @Date: 2025-02-25 16:05:08
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-02-25 16:30:51
+ * @LastEditTime: 2025-03-03 11:23:31
  * @FilePath: /OnlineLTSlam/src/TOOL/calcul_pcd_overlap/src/compareBtcWithNdt.cpp
- * @Description: 一个测试BTC与NDT重定位对点云拼接重合精度的小example
+ * @Description: 一个测试BTC与NDT重定位对点云拼接重合精度的小example（针对单帧）
  * @Logs: 
  */
 
