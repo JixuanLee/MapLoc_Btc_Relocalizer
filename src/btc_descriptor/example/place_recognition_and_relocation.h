@@ -2,10 +2,10 @@
  * @Author: Jixuan Lee
  * @Date: 2025-01-17 17:15:17
  * @LastEditors: Jixuan Lee
- * @LastEditTime: 2025-03-03 10:48:06
- * @FilePath: /OnlineLTSlam/src/btc_descriptor/example/place_recognition_and_relocation.h
- * @Description: 
- * @Logs: 
+ * @LastEditTime: 2025-03-05 14:40:24
+ * @FilePath: /MapLoc_Btc_Relocalizer/src/btc_descriptor/example/place_recognition_and_relocation.h
+ * @Description: see .cpp
+ * @Logs: see .cpp
  */
 
 #include <ros/ros.h>
@@ -44,7 +44,7 @@ typedef struct PosesDiff {
 } PosesDiff;
   
 /**
- * @brief ljx 自定义时间打印类 
+ * @brief JixuanLee 自定义时间打印类(TODO:20->dynamic) 
  */
 class Timer {
 
